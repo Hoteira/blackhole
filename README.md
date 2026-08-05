@@ -1,9 +1,10 @@
 # Blackhole
 
-![screenshot](image.png)
+![screenshot](image.PNG)
 
 A black hole toy shader / """simulation""" written to learn wgpu.
 Nothing here is a serious simulation, but most of the numbers come from real formulas.
+This is not an example of clean, well-documented code, just a weekend passion project.
 
 ## Running
 
@@ -17,7 +18,7 @@ I'd not recommend debug mode as the framerate isn't great.
 | --- | --- |
 | Left drag | Orbit the camera |
 | Scroll | Zoom |
-| F | Fire a burst of matter at the hole, hold to keep firing (I'd recommend firign them until the older ones start to disappear) |
+| F | Fire a burst of matter at the hole, hold to keep firing (though the result looks better if you tap F for every single one of them) |
 | Space | Toggle the grid lensing |
 | V | Toggle vsync |
 | R | Toggle the raymarched background |
@@ -132,4 +133,4 @@ the particles because making it do so caused the lensed arcs to flicker.
 The drag terms that make the disc form are a stand in for viscosity, not a
 simulation of it. Particles never interact with each other.
 
-Speed of light is 6 world units per second.
+---
