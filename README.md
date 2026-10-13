@@ -119,7 +119,7 @@ as brightness.
 
 ## What it gets wrong
 
-The hole does not spin. Everything is Schwarzschild, so there is no frame dragging and no ergosphere. The illusion is creeated only because the matter was thrown
+The hole does not spin. Everything is Schwarzschild, so there is no frame dragging and no ergosphere. The illusion is created only because the matter was thrown
 in with angular momentum.
 
 The hole also does not grow or gain angular momentum from what it swallows. Its
