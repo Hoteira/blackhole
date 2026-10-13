@@ -1,6 +1,6 @@
 # Blackhole
 
-![screenshot](image.PNG)
+![screenshot](https://github.com/Hoteira/blackhole/blob/master/image.png)
 
 A black hole toy shader / """simulation""" written to learn wgpu.
 Nothing here is a serious simulation, but most of the numbers come from real formulas.
