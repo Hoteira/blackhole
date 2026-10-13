@@ -364,31 +364,96 @@ fn starfield(dir: vec3<f32>) -> vec3<f32> {
     return tint * magnitude * falloff * 4.0;
 }
 
-fn photon_accel(pos: vec3<f32>, dir: vec3<f32>, m: f32) -> vec3<f32> {
-    let r_sq = dot(pos, pos);
-    let r = sqrt(r_sq);
+// Kerr-Schild coordinates have the spin along +z, the world has it along +y.
+fn to_kerr(v: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(v.z, v.x, v.y);
+}
 
-    if (r < 1e-4) {
-        return vec3<f32>(0.0);
-    }
+fn from_kerr(v: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(v.y, v.z, v.x);
+}
 
-    let h = length(cross(pos, dir));
+// Boyer-Lindquist r of a Kerr-Schild point, from r^4 - (x^2 + y^2 + z^2 - a^2) r^2 - a^2 z^2 = 0
+fn kerr_r(x: vec3<f32>, a: f32) -> f32 {
+    let a2 = a * a;
+    let k = dot(x, x) - a2;
+    return sqrt(max(0.5 * (k + sqrt(k * k + 4.0 * a2 * x.z * x.z)), 1e-8));
+}
 
-    return pos * (-3.0 * m * h * h / (r_sq * r_sq * r));
+// g^uv = eta^uv - f l^u l^v, returns (l.xyz, f)
+fn kerr_lf(x: vec3<f32>, a: f32, m: f32) -> vec4<f32> {
+    let r = kerr_r(x, a);
+    let r2 = r * r;
+    let w = r2 + a * a;
+    let l = vec3<f32>((r * x.x + a * x.y) / w, (r * x.y - a * x.x) / w, x.z / r);
+    let f = 2.0 * m * r2 * r / (r2 * r2 + a * a * x.z * x.z);
+    return vec4<f32>(l, f);
+}
+
+struct KerrStep {
+    dx: vec3<f32>,
+    dq: vec3<f32>,
+}
+
+// Hamilton's equations for H = 1/2 g^uv p_u p_v with the spatial momentum q and
+// p_t = -1, so l^u p_u = l.q + 1 and H = 1/2 (q.q - 1 - f (l.q + 1)^2).
+// These coordinates are regular for light falling in, not for light coming out.
+fn kerr_step(x: vec3<f32>, q: vec3<f32>, a: f32, m: f32) -> KerrStep {
+    let a2 = a * a;
+    let k = dot(x, x) - a2;
+    let d = max(sqrt(k * k + 4.0 * a2 * x.z * x.z), 1e-6);
+    let r = sqrt(max(0.5 * (k + d), 1e-8));
+    let r2 = r * r;
+
+    let grad_r = vec3<f32>(r * x.x, r * x.y, r * x.z + a2 * x.z / r) / d;
+
+    let n = r2 * r2 + a2 * x.z * x.z;
+    let f = 2.0 * m * r2 * r / n;
+    let grad_f = ((3.0 * a2 * x.z * x.z - r2 * r2) * grad_r - vec3<f32>(0.0, 0.0, 2.0 * a2 * x.z * r))
+        * (2.0 * m * r2 / (n * n));
+
+    let w = r2 + a2;
+    let l = vec3<f32>((r * x.x + a * x.y) / w, (r * x.y - a * x.x) / w, x.z / r);
+    let lq_xy = l.x * q.x + l.y * q.y;
+
+    let grad_lq = (grad_r * (x.x * q.x + x.y * q.y) + vec3<f32>(r * q.x - a * q.y, a * q.x + r * q.y, 0.0)) / w
+        - grad_r * (2.0 * r * lq_xy / w)
+        + vec3<f32>(0.0, 0.0, q.z / r)
+        - grad_r * (x.z * q.z / r2);
+
+    let s = dot(l, q) + 1.0;
+
+    var out: KerrStep;
+    out.dx = q - l * (f * s);
+    out.dq = grad_f * (0.5 * s * s) + grad_lq * (f * s);
+    return out;
 }
 
 fn march(origin: vec3<f32>, direction: vec3<f32>) -> vec3<f32> {
-    let hole = globals.hole.xyz;
     let r_s = max(globals.hole.w, 1e-4);
     let m = 0.5 * r_s;
+    // A ray traced back from the camera is light coming out of the hole, which
+    // blows up at the horizon in these coordinates. Time reversed, it is light
+    // falling into a hole spinning the other way, which does not.
+    let a = -clamp(globals.hud.w, 0.0, 0.999) * m;
+    let horizon = m + sqrt(max(m * m - a * a, 0.0));
 
-    var pos = origin - hole;
-    var dir = normalize(direction);
+    var x = to_kerr(origin - globals.hole.xyz);
+    let d = to_kerr(normalize(direction));
+
+    // pick q so the ray leaves the camera along d and is null
+    let lf = kerr_lf(x, a, m);
+    let f0 = min(lf.w, 0.9);
+    let cos_l = dot(lf.xyz, d);
+    let speed = inverseSqrt(1.0 - f0 * (1.0 - cos_l * cos_l));
+    var q = d * speed + lf.xyz * (f0 * (speed * cos_l + 1.0) / (1.0 - f0));
+
+    var vel = d;
 
     for (var step = 0; step < 220; step = step + 1) {
-        let r = length(pos);
+        let r = kerr_r(x, a);
 
-        if (r <= r_s) {
+        if (r <= horizon) {
             return vec3<f32>(0.0);
         }
 
@@ -396,18 +461,20 @@ fn march(origin: vec3<f32>, direction: vec3<f32>) -> vec3<f32> {
             break;
         }
 
-        let dl = clamp(0.14 * (r - r_s), 0.015, 3.0);
+        let k1 = kerr_step(x, q, a, m);
+        vel = k1.dx;
 
-        let k1 = photon_accel(pos, dir, m);
-        let k2 = photon_accel(pos + dir * (dl * 0.5), dir + k1 * (dl * 0.5), m);
-        let k3 = photon_accel(pos + (dir + k1 * (dl * 0.5)) * (dl * 0.5), dir + k2 * (dl * 0.5), m);
-        let k4 = photon_accel(pos + (dir + k2 * (dl * 0.5)) * dl, dir + k3 * dl, m);
+        let dl = clamp(0.14 * (r - horizon), 0.015, 3.0) / max(length(k1.dx), 1e-3);
 
-        pos += (dir + (k1 + k2 + k3) * (dl / 6.0)) * dl;
-        dir = normalize(dir + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dl / 6.0));
+        let k2 = kerr_step(x + k1.dx * (dl * 0.5), q + k1.dq * (dl * 0.5), a, m);
+        let k3 = kerr_step(x + k2.dx * (dl * 0.5), q + k2.dq * (dl * 0.5), a, m);
+        let k4 = kerr_step(x + k3.dx * dl, q + k3.dq * dl, a, m);
+
+        x += (k1.dx + k2.dx * 2.0 + k3.dx * 2.0 + k4.dx) * (dl / 6.0);
+        q += (k1.dq + k2.dq * 2.0 + k3.dq * 2.0 + k4.dq) * (dl / 6.0);
     }
 
-    return starfield(dir);
+    return starfield(from_kerr(normalize(vel)));
 }
 
 @fragment

@@ -47,11 +47,11 @@ struct SimParams {
 }
 
 impl SimParams {
-    fn new(hole: Vec3, r_s: f32, dt: f32, half_extent: f32) -> Self {
+    fn new(hole: Vec3, r_s: f32, spin: f32, dt: f32, half_extent: f32) -> Self {
         Self {
             hole: [hole.x, hole.y, hole.z, r_s],
             config: [dt, half_extent, DESPAWN_DISTANCE, ACCRETION_RADIUS],
-            tuning: [RADIAL_DAMPING, TANGENTIAL_DRAG, C, 0.0],
+            tuning: [RADIAL_DAMPING, TANGENTIAL_DRAG, C, spin],
         }
     }
 }
@@ -215,6 +215,7 @@ impl ParticleSystem {
         encoder: &mut wgpu::CommandEncoder,
         hole: Vec3,
         r_s: f32,
+        spin: f32,
         half_extent: f32,
         dt: f32,
     ) {
@@ -225,7 +226,7 @@ impl ParticleSystem {
         queue.write_buffer(
             &self.params_buffer,
             0,
-            bytemuck::bytes_of(&SimParams::new(hole, r_s, dt, half_extent)),
+            bytemuck::bytes_of(&SimParams::new(hole, r_s, spin, dt, half_extent)),
         );
 
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {

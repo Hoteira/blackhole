@@ -14,7 +14,10 @@ struct SimParams {
 @group(0) @binding(0) var<storage, read_write> particles: array<GpuParticle>;
 @group(0) @binding(1) var<uniform> sim: SimParams;
 
-fn particle_accel(r_vec: vec3<f32>, v: vec3<f32>, m: f32, c: f32) -> vec3<f32> {
+// spin axis of the hole, same as the raymarcher
+const SPIN_AXIS: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+
+fn particle_accel(r_vec: vec3<f32>, v: vec3<f32>, m: f32, c: f32, a: f32) -> vec3<f32> {
     let r_sq = dot(r_vec, r_vec);
     let r = sqrt(r_sq);
 
@@ -27,7 +30,11 @@ fn particle_accel(r_vec: vec3<f32>, v: vec3<f32>, m: f32, c: f32) -> vec3<f32> {
     let newtonian = m * c * c / (r_sq * r);
     let relativistic = 3.0 * m * h * h / (r_sq * r_sq * r);
 
-    return r_vec * -(newtonian + relativistic);
+    // Lense-Thirring, 2G/(c^2 r^3) * (3 (J.r)(r x v) / r^2 + v x J) with GJ/c^2 = m c a
+    let lense_thirring = (2.0 * m * c * a / (r_sq * r))
+        * (3.0 * dot(SPIN_AXIS, r_vec) * cross(r_vec, v) / r_sq + cross(v, SPIN_AXIS));
+
+    return r_vec * -(newtonian + relativistic) + lense_thirring;
 }
 
 @compute @workgroup_size(64)
@@ -56,6 +63,7 @@ fn cs_update(@builtin(global_invocation_id) gid: vec3<u32>) {
     let radial_damping = sim.tuning.x;
     let tangential_drag = sim.tuning.y;
     let c = sim.tuning.z;
+    let a = clamp(sim.tuning.w, 0.0, 0.999) * m;
 
     let radius = length(particle.position - hole);
     var substeps = 2;
@@ -68,10 +76,10 @@ fn cs_update(@builtin(global_invocation_id) gid: vec3<u32>) {
         var p = particle.position - hole;
         var v = particle.velocity;
 
-        let k1v = particle_accel(p, v, m, c);
-        let k2v = particle_accel(p + v * (h * 0.5), v + k1v * (h * 0.5), m, c);
-        let k3v = particle_accel(p + (v + k1v * (h * 0.5)) * (h * 0.5), v + k2v * (h * 0.5), m, c);
-        let k4v = particle_accel(p + (v + k2v * (h * 0.5)) * h, v + k3v * h, m, c);
+        let k1v = particle_accel(p, v, m, c, a);
+        let k2v = particle_accel(p + v * (h * 0.5), v + k1v * (h * 0.5), m, c, a);
+        let k3v = particle_accel(p + (v + k1v * (h * 0.5)) * (h * 0.5), v + k2v * (h * 0.5), m, c, a);
+        let k4v = particle_accel(p + (v + k2v * (h * 0.5)) * h, v + k3v * h, m, c, a);
 
         let k1p = v;
         let k2p = v + k1v * (h * 0.5);

@@ -22,6 +22,7 @@ I'd not recommend debug mode as the framerate isn't great.
 | Space | Toggle the grid lensing |
 | V | Toggle vsync |
 | R | Toggle the raymarched background |
+| K | Cycle the spin of the raymarched hole (0, 0.5, 0.9, 0.998) |
 
 The red number in the corner is the frame time in milliseconds.
 
@@ -53,7 +54,18 @@ shader. The acceleration is Newtonian gravity plus the relativistic correction:
 a = -(GM/r^2 + 3 M h^2 / r^4) * r_hat
 ```
 
-The second term is the one that makes Mercury's orbit precess. It is also why
+When the hole spins (K), the particles also feel frame dragging through the
+Lense-Thirring term, with the spin `a` along +y:
+
+```
+a_LT = 2 M c a / r^3 * (3 (s . r)(r x v) / r^2 + v x s)
+```
+
+It pushes outward on matter orbiting with the spin and inward on matter
+orbiting against it, and drags orbits that are tilted to the spin axis around
+it.
+
+The second term of the gravity law is the one that makes Mercury's orbit precess. It is also why
 there is an innermost stable orbit at all, which Newtonian gravity does not
 have. Particles that fall inside the horizon are deleted, as are ones that
 leave the grid.
@@ -67,16 +79,28 @@ disc forms, tightens, crosses the ISCO and plunges over about ninety seconds.
 ## The background
 
 The stars and the shadow are raymarched. Every pixel integrates a null geodesic
-backwards from the camera with RK4 and adaptive step size, using
+backwards from the camera with RK4 and adaptive step size, in a Kerr spacetime,
+so the hole here can spin (K cycles it). Kerr-Schild coordinates keep space
+Cartesian and have no trouble at the poles or the horizon, and the inverse
+metric is just flat space plus one extra term
 
 ```
-a = -3 M h^2 / r^5 * r_vec
+g^uv = eta^uv - f l^u l^v
+f    = 2 M r^3 / (r^4 + a^2 z^2)
 ```
 
-which is the same law with the Newtonian term removed, because for light the
-entire deflection comes from the relativistic piece. Each ray either crosses
-the horizon and comes back black, or escapes and samples a procedural starfield
-in whatever direction it ended up pointing.
+so instead of the geodesic equation the ray follows Hamilton's equations for
+`H = 1/2 g^uv p_u p_v`, with the gradient worked out by hand. A ray traced
+backwards from the camera is really light coming out of the hole, and these
+coordinates only behave for light falling in, its momentum blows up at the
+horizon. Running time backwards instead turns it into light falling into a hole
+spinning the other way, so the march just uses `-a`. At zero spin this reduces
+to the plain Schwarzschild bending.
+
+Each ray either crosses the horizon at `r+ = M + sqrt(M^2 - a^2)` and comes back
+black, or escapes and samples a procedural starfield in whatever direction it
+ended up pointing. At high spin, seen from the side, the shadow flattens on
+the side rotating toward the camera into the familiar D shape.
 
 ## The grid
 
@@ -111,7 +135,7 @@ brightness = (doppler * redshift)^4
 
 The fourth power means the side of the disc rotating toward the camera is many
 times brighter than the receding side. In an eight bit target both sides clip to
-white and the whole effect disappears, so the float target is used to makes it
+white and the whole effect disappears, so the float target is used to make it
 visible at all.
 
 Particles blend additively and are drawn as one pixel points, so density reads
@@ -119,8 +143,13 @@ as brightness.
 
 ## What it gets wrong
 
-The hole does not spin. Everything is Schwarzschild, so there is no frame dragging and no ergosphere. The illusion is created only because the matter was thrown
-in with angular momentum.
+The spin is only partly there. The background is full Kerr, but the particles
+get Schwarzschild plus the weak field Lense-Thirring term, which is only the
+first correction for spin. Close to a fast spinning hole that is not enough, and
+the innermost stable orbit barely moves instead of shrinking toward M. The
+grid and the redshift ignore the spin entirely. The mass is kept fixed,
+so the raymarched horizon shrinks to half a unit at maximum spin while
+everything else still treats it as one.
 
 The hole also does not grow or gain angular momentum from what it swallows. Its
 mass is a constant.

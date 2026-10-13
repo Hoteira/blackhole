@@ -30,6 +30,7 @@ impl Globals {
         basis: (Vec3, Vec3, Vec3),
         tan_half_fov: f32,
         raymarch: f32,
+        spin: f32,
     ) -> Self {
         let d = light_dir.normalize_or_zero();
 
@@ -38,7 +39,7 @@ impl Globals {
             light_dir: [d.x, d.y, d.z, 0.0],
             eye: [eye.x, eye.y, eye.z, 0.0],
             hole: [hole.x, hole.y, hole.z, r_s],
-            hud: [frame_ms, aspect, crate::particles::C, 0.0],
+            hud: [frame_ms, aspect, crate::particles::C, spin],
             tonemap: [
                 exposure,
                 if srgb_surface { 1.0 } else { 0.0 },

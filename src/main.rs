@@ -24,6 +24,7 @@ const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const LIGHT_DIR: glam::Vec3 = glam::Vec3::new(-0.4, -0.7, -0.6);
 const GRID_HALF_EXTENT: f32 = 48.0;
 const GRID_Y: f32 = -4.0;
+const SPIN_STEPS: [f32; 4] = [0.0, 0.5, 0.9, 0.998];
 
 struct State {
     window: Arc<Window>,
@@ -46,6 +47,7 @@ struct State {
     tonemap_pipeline: wgpu::RenderPipeline,
     raymarch_pipeline: wgpu::RenderPipeline,
     raymarch: bool,
+    spin: usize,
     bright_pipeline: wgpu::RenderPipeline,
     blur_h_pipeline: wgpu::RenderPipeline,
     blur_v_pipeline: wgpu::RenderPipeline,
@@ -122,6 +124,7 @@ impl State {
                 camera_basis(&camera),
                 (camera.fov_y * 0.5).tan(),
                 1.0,
+                0.0,
             )),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -465,6 +468,7 @@ impl State {
             tonemap_pipeline,
             raymarch_pipeline,
             raymarch: true,
+            spin: 0,
             bright_pipeline,
             blur_h_pipeline,
             blur_v_pipeline,
@@ -508,6 +512,7 @@ impl State {
                 camera_basis(&self.camera),
                 (self.camera.fov_y * 0.5).tan(),
                 if self.raymarch { 1.0 } else { 0.0 },
+                SPIN_STEPS[self.spin],
             )),
         );
     }
@@ -580,6 +585,11 @@ impl State {
         self.window.request_redraw();
     }
 
+    fn cycle_spin(&mut self) {
+        self.spin = (self.spin + 1) % SPIN_STEPS.len();
+        self.window.request_redraw();
+    }
+
     fn toggle_vsync(&mut self) {
         self.vsync = !self.vsync;
 
@@ -630,6 +640,7 @@ impl State {
             &mut encoder,
             self.hole,
             SCHWARZSCHILD_RADIUS,
+            SPIN_STEPS[self.spin],
             GRID_HALF_EXTENT,
             dt,
         );
@@ -898,6 +909,18 @@ impl ApplicationHandler for App {
                 ..
             } => {
                 state.toggle_raymarch();
+            }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(KeyCode::KeyK),
+                        state: ElementState::Pressed,
+                        repeat: false,
+                        ..
+                    },
+                ..
+            } => {
+                state.cycle_spin();
             }
             WindowEvent::KeyboardInput {
                 event:
